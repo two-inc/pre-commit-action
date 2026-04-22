@@ -39,11 +39,25 @@ jobs:
 | `python-version` | `3.12`                | Python version to install             |
 | `github-token`   | `${{ github.token }}` | Token used to post the sticky comment |
 
+## Requirements
+
+The consumer repo must declare `pre-commit` in its pyproject `dev` dependency group, e.g.:
+
+```toml
+[dependency-groups]
+dev = [
+  "pre-commit>=4.5.1",
+  # ...
+]
+```
+
+The action runs `uv run --only-group dev pre-commit run ...`, which installs only the `dev` group (not the project itself) and uses the pre-commit version declared there. This means the pre-commit version is tracked alongside the project's other tooling, rather than being pinned in the workflow.
+
 ## Behaviour
 
 - Checks out the PR with full history (`fetch-depth: 0`) so pre-commit can diff against `origin/${{ github.base_ref }}`.
 - Installs `uv` with caching enabled, sets up Python.
-- Runs `uvx pre-commit run --from-ref ... --to-ref ...` against the PR diff. No project `uv sync` is performed — pre-commit manages its own hook environments.
+- Runs `uv run --only-group dev pre-commit run --from-ref ... --to-ref ...` against the PR diff. The project itself is not installed — only the `dev` dependency group, which should contain pre-commit.
 - Posts the result as a sticky PR comment identified by the `pre-commit` header marker — the comment is updated in place across pushes instead of deleted and recreated.
 - Exits with pre-commit's exit code so the job reflects pass/fail.
 
@@ -51,7 +65,5 @@ jobs:
 
 The action deliberately drops two things that appeared in many existing `style.yaml` files:
 
-- **GCP auth / Artifact Registry login** — not needed for pre-commit. The only private hook repo used across two-inc (`two-inc/git-hooks`) is actually public.
-- **`uv sync --group dev`** — not needed. `uvx pre-commit` installs pre-commit in an ephemeral environment and pre-commit itself manages each hook's environment. No coupling to the project's dev dependencies.
-
-If a repo genuinely needs either, add the step in its own workflow before the `uses: two-inc/pre-commit-action@main` step.
+- **GCP Artifact Registry auth** — not needed. The `two` / `two-pypi` Artifact Registry indices used by two-inc Python repos are anonymously readable, so `uv` can resolve dev-group deps like `two-dev-cli` without authenticating.
+- **Full project `uv sync`** — not needed. `--only-group dev` installs just the dev group; pre-commit itself manages each hook's isolated environment.
